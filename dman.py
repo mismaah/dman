@@ -133,6 +133,7 @@ def traverse(parent):
         if item in data["ignore"]:
             continue
         itemPath = os.path.join(parent["path"], item)
+        print(itemPath)
         if os.path.isfile(itemPath):
             filePath = itemPath
             stats = os.stat(filePath)
@@ -252,15 +253,17 @@ def tree(args):
     if source == None:
         print(f"Source does not exist: {name}")
         return
-    print(source["path"])
     lines = [i for i in treeGen(source)]
-    for line in lines:
-        print(line)
     if len(args) > 1:
         with open(args[1], "w", encoding="utf8") as f:
             f.write(f"{source['path']}\n")
             for line in lines:
                 f.write(f"{line}\n")
+        print(f"Tree for {source['name']} exported to {args[1]}")
+    else:
+        print(source["path"])
+        for line in lines:
+            print(line)
 
 
 if __name__ == "__main__" and len(sys.argv) > 1:
