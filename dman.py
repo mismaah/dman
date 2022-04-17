@@ -6,7 +6,7 @@ from datetime import datetime
 from helpers import *
 
 dataFileName = "data.json"
-data = {"sources": [], "log": []}
+data = {"sources": [], "log": [], "ignore": []}
 
 
 def load():
@@ -51,6 +51,9 @@ def guide():
                 "Export contents of source as a tree to file.",
             ],
             ["h <source>", "List all revisions of a source."],
+            ["ignore new <item>", "Add new item to ignore list."],
+            ["ignore rm <item>", "Remove item from ignore list."],
+            ["ignore ls", "List ignore list."],
         ]
     )
 
@@ -122,10 +125,13 @@ def ua(args=[""]):
 
 
 def traverse(parent):
+    global data
     clone = copy.deepcopy(parent)
     clone["files"] = []
     clone["dirs"] = []
     for item in os.listdir(parent["path"]):
+        if item in data["ignore"]:
+            continue
         itemPath = os.path.join(parent["path"], item)
         if os.path.isfile(itemPath):
             filePath = itemPath
@@ -136,6 +142,17 @@ def traverse(parent):
         elif os.path.isdir(itemPath):
             clone["dirs"].append(traverse({"name": item, "path": itemPath}))
     return clone
+
+
+def ignore(args):
+    global data
+    if args[0] == "new":
+        data["ignore"].append(args[1])
+        data["ignore"] = list(set(data["ignore"]))
+    elif args[0] == "rm":
+        data["ignore"] = [item for item in data["ignore"] if item != args[1]]
+    elif args[0] == "ls":
+        print(data["ignore"])
 
 
 def rm(args):
