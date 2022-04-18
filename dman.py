@@ -2,39 +2,60 @@ import os
 import sys
 import json
 import copy
+import sqlite3
 from datetime import datetime
 from helpers import *
 
-dataFileName = "data.json"
-data = {"sources": [], "log": [], "ignore": []}
+con = sqlite3.connect("data.db")
+cur = con.cursor()
+verbose = False
 
 
-def load():
-    global data
+def query(q):
     try:
-        with open(dataFileName, "r") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        print("Data file not found.")
-        createFile()
+        cur.execute(q)
+        return cur.fetchall()
+    except sqlite3.OperationalError as e:
+        if str(e).split(": ")[0] == "no such table":
+            createTable(str(e).split(": ")[1])
+            return query(q)
+        else:
+            print(e)
 
 
-def save():
-    global data
-    with open(dataFileName, "w") as f:
-        json.dump(data, f, indent=2)
+def mutate(q):
+    try:
+        cur.execute(q)
+        con.commit()
+    except sqlite3.OperationalError as e:
+        if str(e).split(": ")[0] == "no such table":
+            createTable(str(e).split(": ")[1])
+            mutate(q)
+        else:
+            print(e)
 
 
-def createFile():
-    print("Creating new data file.")
-    with open(dataFileName, "w") as f:
-        json.dump(data, f)
+def createTable(name):
+    print(name)
+    query = ""
+    if name == "sources":
+        query = f"CREATE TABLE {name} (id INTEGER PRIMARY KEY, name TEXT, value TEXT)"
+    elif name == "revisions":
+        query = f"CREATE TABLE {name} (id INTEGER PRIMARY KEY, sourceId INTEGER, value TEXT)"
+    elif name == "logs":
+        query = f"CREATE TABLE {name} (id INTEGER PRIMARY KEY, timestamp INTEGER, commands TEXT)"
+    elif name == "ignore":
+        query = f"CREATE TABLE {name} (id INTEGER PRIMARY KEY, value TEXT UNIQUE)"
+    else:
+        return
+    cur.execute(query)
+    con.commit()
 
 
 def guide():
     print_table(
         [
-            ["Commands", ""],
+            ["COMMANDS", ""],
             ["new <name> <path>", "Create new source."],
             ["u <source>", "Update source."],
             [
@@ -50,16 +71,18 @@ def guide():
                 "tree <source> <filename>",
                 "Export contents of source as a tree to file.",
             ],
-            ["h <source>", "List all revisions of a source."],
-            ["ignore new <item>", "Add new item to ignore list."],
-            ["ignore rm <item>", "Remove item from ignore list."],
-            ["ignore ls", "List ignore list."],
+            ["rev <source>", "List all revisions of a source."],
+            ["ig new <item>", "Add new item to ignore list."],
+            ["ig rm <item>", "Remove item from ignore list."],
+            ["ig ls", "List ignore list."],
+            ["", ""],
+            ["FLAGS", ""],
+            ["-v", "Verbose."],
         ]
     )
 
 
 def new(args):
-    global data
     name = args[0]
     match = find(name)
     if match != None:
@@ -71,7 +94,6 @@ def new(args):
         print(f"Invalid source path: {path}")
         return
     source = {
-        "id": maxID(data["sources"]) + 1,
         "name": name,
         "path": absolutePath,
         "created": datetime.now().timestamp(),
@@ -80,48 +102,52 @@ def new(args):
     }
     source = traverse(source)
     source["checksum"] = checksum(source)
-    data["sources"].append(source)
+    mutate(
+        f"INSERT INTO sources (name, value) VALUES ('{source['name']}', '{json.dumps(source)}');"
+    )
     print(f"New source {name} added.")
 
 
-def u(args):
-    global data
+def u(args, source=None):
     name = args[0]
     force = False
     if len(args) > 1 and args[1] == "f":
         force = True
-    source = find(name)
     if source == None:
-        print(f"Source does not exist: {name}")
-        return
+        (id, source) = find(name)
+        if source == None:
+            print(f"Source does not exist: {name}")
+            return
+    print(f"Checking {source['name']} for changes.")
     updated = traverse(source)
     if source == updated and not force:
         print(
             f"No changes to {source['name']} since {timestampToString(source['updated'])}"
         )
         return
-    if not "history" in source:
-        source["history"] = []
-    source["history"].append(
-        {
-            "updated": source["updated"],
-            "files": source["files"],
-            "dirs": source["dirs"],
-            "checksum": source["checksum"],
-        }
+    revision = {
+        "sourceId": source["id"],
+        "updated": source["updated"],
+        "files": source["files"],
+        "dirs": source["dirs"],
+        "checksum": source["checksum"],
+    }
+    mutate(
+        f"INSERT INTO revisions (sourceId, value) VALUES ({id}, '{json.dumps(revision)}');"
     )
     source["files"] = updated["files"]
     source["dirs"] = updated["dirs"]
     source["updated"] = datetime.now().timestamp()
-    source["revisions"] = updated["revisions"] + 1
     source["checksum"] = checksum(updated)
+    mutate(f"UPDATE sources SET value = '{json.dumps(source)}' WHERE id = {id}")
     print(f"Updated {source['name']}.")
 
 
 def ua(args=[""]):
-    global data
-    for source in data["sources"]:
-        u([source["name"], args[0]])
+    sources = query(f"SELECT value FROM sources")
+    sources = ((json.loads(i[0])) for i in sources)
+    for source in sources:
+        u([source["name"], args[0]], source=source)
 
 
 def traverse(parent):
@@ -130,10 +156,11 @@ def traverse(parent):
     clone["files"] = []
     clone["dirs"] = []
     for item in os.listdir(parent["path"]):
-        if item in data["ignore"]:
+        if item in ig(["r"]):
             continue
         itemPath = os.path.join(parent["path"], item)
-        print(itemPath)
+        if verbose:
+            print(itemPath)
         if os.path.isfile(itemPath):
             filePath = itemPath
             stats = os.stat(filePath)
@@ -145,43 +172,49 @@ def traverse(parent):
     return clone
 
 
-def ignore(args):
-    global data
+def ig(args):
     if args[0] == "new":
-        data["ignore"].append(args[1])
-        data["ignore"] = list(set(data["ignore"]))
+        value = args[1]
+        mutate(f"INSERT INTO ignore (value) VALUES ('{value}')")
+        ig(["ls"])
     elif args[0] == "rm":
-        data["ignore"] = [item for item in data["ignore"] if item != args[1]]
+        value = args[1]
+        mutate(f"DELETE FROM ignore WHERE value = '{value}'")
+        ig(["ls"])
     elif args[0] == "ls":
-        print(data["ignore"])
+        ignoreList = query("SELECT value FROM ignore")
+        ignoreList = [i[0] for i in ignoreList]
+        print(ignoreList)
+    elif args[0] == "r":
+        ignoreList = query("SELECT value FROM ignore")
+        ignoreList = [i[0] for i in ignoreList]
+        return ignoreList
 
 
 def rm(args):
-    global data
     name = args[0]
-    source = find(name)
+    (id, source) = find(name)
     if source == None:
         print(f"Source does not exist: {name}")
         return
-    data["sources"] = [
-        source for source in data["sources"] if source["name"] != source["name"]
-    ]
+    mutate(f"DELETE FROM sources WHERE id = {id}")
     print(f"Source removed: {source['name']}")
 
 
 def ls():
-    global data
+    sources = query("SELECT id, value FROM sources")
+    sources = [(i[0], json.loads(i[1])) for i in sources]
     formatted = [
         [
-            source["id"],
+            id,
             source["name"],
             source["path"],
             timestampToString(source["created"]),
             timestampToString(source["updated"]),
-            source["revisions"],
+            revCount(id),
             sizeof_fmt(sizeCalc(source)),
         ]
-        for source in data["sources"]
+        for (id, source) in sources
     ]
     formatted.insert(
         0, ["ID", "NAME", "PATH", "CREATED", "UPDATED", "REVISIONS", "SIZE"]
@@ -189,23 +222,30 @@ def ls():
     print_table(formatted)
 
 
-def h(args):
-    global data
+def revCount(sourceId):
+    count = query(f"SELECT count(*) FROM revisions WHERE sourceId = {sourceId}")
+    count = count[0][0]
+    return count
+
+
+def rev(args):
     name = args[0]
-    source = find(name)
+    (id, source) = find(name)
     if source == None:
         print(f"Source does not exist: {name}")
         return
     formatted = []
-    if "history" in source:
+    revisions = query(f"SELECT value FROM revisions WHERE sourceId = {id}")
+    revisions = [json.loads(i[0]) for i in revisions]
+    if len(revisions) > 0:
         formatted = [
             [
-                len(source["history"]) - i - 1,
-                timestampToString(history["updated"]),
-                sizeof_fmt(sizeCalc(history)),
-                history["checksum"],
+                len(revisions) - i - 1,
+                timestampToString(revision["updated"]),
+                sizeof_fmt(sizeCalc(revision)),
+                revision["checksum"],
             ]
-            for i, history in enumerate(reversed(source["history"]))
+            for i, revision in enumerate(reversed(revisions))
         ]
     formatted.insert(
         0,
@@ -225,31 +265,25 @@ def h(args):
 
 
 def logSession(args):
-    global data
-    data["log"].append({"timestamp": datetime.now().timestamp(), "commands": args})
+    mutate(
+        f"INSERT INTO logs (timestamp, commands) VALUES ({datetime.now().timestamp()}, '{' '.join(args)}');"
+    )
 
 
 def find(name):
-    global data
-    match = next(
-        (source for source in data["sources"] if source["name"] == name),
-        None,
+    name = name[0]
+    source = query(
+        f"SELECT id, value FROM sources WHERE id = '{name}' OR name LIKE '%{name}%'"
     )
-    if match == None:
-        try:
-            match = next(
-                (source for source in data["sources"] if source["id"] == int(name)),
-                None,
-            )
-        except ValueError:
-            pass
-    return match
+    if len(source) == 0:
+        return None
+    source = (source[0][0], json.loads(source[0][1]))
+    return source
 
 
 def tree(args):
-    global data
     name = args[0]
-    source = find(name)
+    (_, source) = find(name)
     if source == None:
         print(f"Source does not exist: {name}")
         return
@@ -267,13 +301,17 @@ def tree(args):
 
 
 if __name__ == "__main__" and len(sys.argv) > 1:
-    load()
-    args = sys.argv[2:]
-    if len(args) == 0:
-        globals()[sys.argv[1]]()
+    args = []
+    for i in sys.argv[1:]:
+        if i == "-v":
+            verbose = True
+        else:
+            args.append(i)
+    if len(args) == 1:
+        globals()[args[0]]()
     else:
-        globals()[sys.argv[1]](args)
-    logSession(sys.argv[1:])
-    save()
+        globals()[args[0]](args[1:])
+    logSession(args[2:])
+    con.close()
 else:
     guide()
