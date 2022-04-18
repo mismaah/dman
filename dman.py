@@ -83,7 +83,7 @@ def u(args, source=None):
         )
         return
     revision = {
-        "sourceId": source["id"],
+        "sourceId": id,
         "updated": source["updated"],
         "files": source["files"],
         "dirs": source["dirs"],
