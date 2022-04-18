@@ -1,9 +1,11 @@
-from datetime import datetime
+import copy
 import hashlib
 import json
+import os
+from datetime import datetime
 
 
-def print_table(table):
+def printTable(table):
     longest_cols = [
         (max([len(str(row[i])) for row in table]) + 3) for i in range(len(table[0]))
     ]
@@ -35,8 +37,8 @@ def sizeCalc(parent) -> int:
     return size
 
 
-def sizeof_fmt(num, suffix="B"):
-    for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]:
+def sizeOfFmt(num, suffix="B"):
+    for unit in ["", "K", "M", "G", "T", "P", "E", "Z"]:
         if abs(num) < 1024.0:
             return f"{num:3.1f} {unit}{suffix}"
         num /= 1024.0
@@ -54,7 +56,7 @@ def treeGen(parent, prefix: str = ""):
         [tee] * (len(files) - 1) + [last] if len(parent["dirs"]) == 0 else [tee]
     )
     for pointer, file in zip(filePointers, files):
-        yield prefix + pointer + file["name"]
+        yield prefix + pointer + file["name"].replace("`", "'")
     dirPointers = [tee] * (len(dirs) - 1) + [last]
     for pointer, dir in zip(dirPointers, dirs):
         yield prefix + pointer + dir["name"]
@@ -71,6 +73,44 @@ def checksum(source):
 
 
 def sourceInfo(source):
-    print(f"ID: {source['id']}")
     print(f"NAME: {source['name']}")
     print(f"PATH: {source['path']}")
+
+
+def traverse(parent, verbose=False, ignoreList=None):
+    from dman import ig
+
+    if ignoreList == None:
+        ignoreList = ig(["r"])
+    clone = copy.deepcopy(parent)
+    clone["files"] = []
+    clone["dirs"] = []
+    for item in os.listdir(parent["path"]):
+        if item in ignoreList:
+            continue
+        itemPath = os.path.join(parent["path"], item)
+        if verbose:
+            print(itemPath)
+        if os.path.isfile(itemPath):
+            filePath = itemPath
+            stats = os.stat(filePath)
+            clone["files"].append(
+                {
+                    "name": item.replace("'", "`"),
+                    "lastModified": stats.st_mtime,
+                    "size": stats.st_size,
+                }
+            )
+        elif os.path.isdir(itemPath):
+            clone["dirs"].append(
+                traverse({"name": item, "path": itemPath}, ignoreList=ignoreList)
+            )
+    return clone
+
+
+def isInt(s):
+    try:
+        i = int(s)
+        return True, i
+    except ValueError:
+        return False, s
