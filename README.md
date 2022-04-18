@@ -1,4 +1,3 @@
 # dman
 
-Backup manager for local files.
-Work in progress.
+Backup manager with versioning and history. Work in progress.
