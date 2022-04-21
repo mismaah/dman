@@ -56,7 +56,7 @@ def treeGen(parent, prefix: str = ""):
         [tee] * (len(files) - 1) + [last] if len(parent["dirs"]) == 0 else [tee]
     )
     for pointer, file in zip(filePointers, files):
-        yield prefix + pointer + file["name"].replace("`", "'")
+        yield prefix + pointer + file["name"]
     dirPointers = [tee] * (len(dirs) - 1) + [last]
     for pointer, dir in zip(dirPointers, dirs):
         yield prefix + pointer + dir["name"]
@@ -86,25 +86,28 @@ def traverse(parent, verbose=False, ignoreList=None):
     clone["files"] = []
     clone["dirs"] = []
     for item in os.listdir(parent["path"]):
-        if item in ignoreList:
-            continue
-        itemPath = os.path.join(parent["path"], item)
-        if verbose:
-            print(itemPath)
-        if os.path.isfile(itemPath):
-            filePath = itemPath
-            stats = os.stat(filePath)
-            clone["files"].append(
-                {
-                    "name": item.replace("'", "`"),
-                    "lastModified": stats.st_mtime,
-                    "size": stats.st_size,
-                }
-            )
-        elif os.path.isdir(itemPath):
-            clone["dirs"].append(
-                traverse({"name": item, "path": itemPath}, ignoreList=ignoreList)
-            )
+        try:
+            if item in ignoreList:
+                continue
+            itemPath = os.path.join(parent["path"], item)
+            if verbose:
+                print(itemPath)
+            if os.path.isfile(itemPath):
+                filePath = itemPath
+                stats = os.stat(filePath)
+                clone["files"].append(
+                    {
+                        "name": item,
+                        "lastModified": stats.st_mtime,
+                        "size": stats.st_size,
+                    }
+                )
+            elif os.path.isdir(itemPath):
+                clone["dirs"].append(
+                    traverse({"name": item, "path": itemPath}, ignoreList=ignoreList)
+                )
+        except PermissionError as e:
+            print(e)
     return clone
 
 

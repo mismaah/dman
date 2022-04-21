@@ -60,21 +60,26 @@ def new(args):
     source = helpers.traverse(source, verbose=verbose)
     source["checksum"] = helpers.checksum(source)
     database.mutate(
-        f"INSERT INTO sources (name, value) VALUES ('{source['name']}', '{json.dumps(source, ensure_ascii=True)}');"
+        "INSERT INTO sources (name, value) VALUES (?, ?);",
+        params=(source["name"], json.dumps(source, ensure_ascii=True)),
     )
     print(f"New source {name} added.")
 
 
-def u(args, source=None):
+def u(args, idsource=None):
     name = args[0]
     force = False
     if len(args) > 1 and args[1] == "f":
         force = True
+    id = None
+    source = None
     if source == None:
         (id, source) = database.find(name)
         if source == None:
             print(f"Source does not exist: {name}")
             return
+    else:
+        (id, source) = idsource
     print(f"Checking {source['name']} for changes.")
     updated = helpers.traverse(source, verbose=verbose)
     if source == updated and not force:
@@ -90,33 +95,35 @@ def u(args, source=None):
         "checksum": source["checksum"],
     }
     database.mutate(
-        f"INSERT INTO revisions (sourceId, value) VALUES ({id}, '{json.dumps(revision)}');"
+        "INSERT INTO revisions (sourceId, value) VALUES (?, ?);",
+        params=(id, json.dumps(revision, ensure_ascii=True)),
     )
     source["files"] = updated["files"]
     source["dirs"] = updated["dirs"]
     source["updated"] = datetime.now().timestamp()
     source["checksum"] = helpers.checksum(updated)
     database.mutate(
-        f"UPDATE sources SET value = '{json.dumps(source)}' WHERE id = {id}"
+        "UPDATE sources SET value = ? WHERE id = ?",
+        params=(json.dumps(source, ensure_ascii=True), id),
     )
     print(f"Updated {source['name']}.")
 
 
 def ua(args=[""]):
-    sources = database.query(f"SELECT value FROM sources")
-    sources = ((json.loads(i[0])) for i in sources)
+    sources = database.query(f"SELECT id, value FROM sources")
+    sources = ((i[0], (json.loads(i[1]))) for i in sources)
     for source in sources:
-        u([source["name"], args[0]], source=source)
+        u([source[1]["name"], args[0]], idsource=source)
 
 
 def ig(args):
     if args[0] == "new":
         value = args[1]
-        database.mutate(f"INSERT INTO ignore (value) VALUES ('{value}')")
+        database.mutate("INSERT INTO ignore (value) VALUES (?)", params=(value))
         ig(["ls"])
     elif args[0] == "rm":
         value = args[1]
-        database.mutate(f"DELETE FROM ignore WHERE value = '{value}'")
+        database.mutate("DELETE FROM ignore WHERE value = ?", params=(value))
         ig(["ls"])
     elif args[0] == "ls":
         ignoreList = database.query("SELECT value FROM ignore")
@@ -134,7 +141,7 @@ def rm(args):
     if source == None:
         print(f"Source does not exist: {name}")
         return
-    database.mutate(f"DELETE FROM sources WHERE id = {id}")
+    database.mutate("DELETE FROM sources WHERE id = ?", params=((id,)))
     print(f"Source removed: {source['name']}")
 
 
@@ -166,7 +173,9 @@ def rev(args):
         print(f"Source does not exist: {name}")
         return
     formatted = []
-    revisions = database.query(f"SELECT value FROM revisions WHERE sourceId = {id}")
+    revisions = database.query(
+        "SELECT value FROM revisions WHERE sourceId = ?", params=((id,))
+    )
     revisions = [json.loads(i[0]) for i in revisions]
     if len(revisions) > 0:
         formatted = [

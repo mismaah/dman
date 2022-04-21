@@ -7,9 +7,9 @@ con = sqlite3.connect("data.db")
 cur = con.cursor()
 
 
-def query(q):
+def query(q, params=()):
     try:
-        cur.execute(q)
+        cur.execute(q, params)
         return cur.fetchall()
     except sqlite3.OperationalError as e:
         if str(e).split(": ")[0] == "no such table":
@@ -19,11 +19,9 @@ def query(q):
             raise e
 
 
-def mutate(q):
+def mutate(q, params=()):
     try:
-        with open("query.txt", "w") as f:
-            f.write(q)
-        cur.execute(q)
+        cur.execute(q, params)
         con.commit()
     except sqlite3.OperationalError as e:
         if str(e).split(": ")[0] == "no such table":
