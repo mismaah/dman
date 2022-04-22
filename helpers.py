@@ -74,7 +74,6 @@ def checksum(source):
 
 def sourceInfo(source):
     print(f"NAME: {source['name']}")
-    print(f"PATH: {source['path']}")
 
 
 def traverse(parent, verbose=False, ignoreList=None):
