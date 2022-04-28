@@ -4,6 +4,11 @@ import json
 import os
 from datetime import datetime
 
+space = "    "
+branch = "│   "
+tee = "├── "
+last = "└── "
+
 
 def printTable(table):
     longest_cols = [
@@ -46,14 +51,10 @@ def sizeOfFmt(num, suffix="B"):
 
 
 def treeGen(parent, prefix: str = ""):
-    space = "    "
-    branch = "│   "
-    tee = "├── "
-    last = "└── "
     files = parent["files"]
     dirs = parent["dirs"]
-    filePointers = (
-        [tee] * (len(files) - 1) + [last] if len(parent["dirs"]) == 0 else [tee]
+    filePointers = ([tee] * (len(files) - 1)) + (
+        [last] if len(parent["dirs"]) == 0 else [tee]
     )
     for pointer, file in zip(filePointers, files):
         yield prefix + pointer + file["name"]
@@ -62,6 +63,45 @@ def treeGen(parent, prefix: str = ""):
         yield prefix + pointer + dir["name"]
         extension = branch if pointer == tee else space
         yield from treeGen(dir, prefix=prefix + extension)
+
+
+# def diffGen(rev1, rev2, prefix: str = ""):
+#     fileAdditions = []
+#     fileSubtractions = []
+#     fileNames1 = [i["name"] for i in rev1["files"]]
+#     fileNames2 = [i["name"] for i in rev2["files"]]
+#     for file in fileNames1:
+#         if file not in fileNames2:
+#             fileAdditions.append(f"- {file}\n")
+#     for file in fileNames2:
+#         if file not in fileNames1:
+#             fileSubtractions.append(f"+ {file}\n")
+#     dirAdditions = []
+#     dirSubtractions = []
+#     dirNames1 = [i["name"] for i in rev1["dirs"]]
+#     dirNames2 = [i["name"] for i in rev2["dirs"]]
+#     for dir in dirNames1:
+#         if dir not in dirNames2:
+#             dirAdditions.append(f"- {dir}\n")
+#     for dir in dirNames2:
+#         if dir not in dirNames1:
+#             dirSubtractions.append(f"+ {dir}\n")
+#     fileAdditionPointers = [tee] * (len(fileAdditions) - 1) + [last]
+#     for pointer, file in zip(fileAdditionPointers, fileAdditions):
+#         yield prefix + pointer + file
+#     fileSubtractionPointers = [tee] * (len(fileSubtractions) - 1) + [last]
+#     for pointer, file in zip(fileSubtractionPointers, fileSubtractions):
+#         yield prefix + pointer + file
+#     dirAdditionPointers = [tee] * (len(dirAdditions) - 1) + [last]
+#     for pointer, dir in zip(dirAdditionPointers, dirAdditions):
+#         yield prefix + pointer + dir
+#         extension = branch if pointer == tee else space
+#         yield from diffGen(dir, prefix=prefix + extension)
+#     dirSubtractionPointers = [tee] * (len(dirSubtractions) - 1) + [last]
+#     for pointer, dir in zip(dirSubtractionPointers, dirSubtractions):
+#         yield prefix + pointer + dir
+#         extension = branch if pointer == tee else space
+#         yield from diffGen(dir, prefix=prefix + extension)
 
 
 def checksum(source):
@@ -103,7 +143,7 @@ def traverse(parent, verbose=False, ignoreList=None):
                 )
             elif os.path.isdir(itemPath):
                 clone["dirs"].append(
-                    traverse({"name": item, "path": itemPath}, ignoreList=ignoreList)
+                    traverse({"name": item, "path": itemPath}, verbose, ignoreList)
                 )
         except PermissionError as e:
             print(e)
