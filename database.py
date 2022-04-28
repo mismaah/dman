@@ -61,6 +61,34 @@ def find(name):
     return (source, revision)
 
 
+def findRev(id):
+    revision = fetch(
+        "SELECT id, sourceId, created, checksum, value FROM revisions WHERE id = ?",
+        params=(id,),
+    )
+    if len(revision) == 0:
+        return None
+    revision = {
+        "id": revision[0][0],
+        "sourceId": revision[0][1],
+        "created": revision[0][2],
+        "checksum": revision[0][3],
+        "value": json.loads(revision[0][4]),
+    }
+    source = fetch(
+        "SELECT id, name, path, created, current_revision_id FROM sources WHERE id = ?",
+        params=(revision["sourceId"],),
+    )
+    source = {
+        "id": source[0][0],
+        "name": source[0][1],
+        "path": source[0][2],
+        "created": source[0][3],
+        "currentRevisionId": source[0][4],
+    }
+    return (revision, source)
+
+
 def createTable(name):
     print(name)
     query = ""

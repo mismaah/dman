@@ -214,22 +214,52 @@ def rev(args):
 
 def tree(args):
     name = args[0]
-    (source, revision) = database.find(name)
-    current = revision["value"]
-    if source == None:
-        print(f"Source does not exist: {name}")
-        return
+    sourceAndRevision = database.find(name)
+    source = None
+    current = None
+    if sourceAndRevision == None:
+        revMatchAndSource = database.findRev(name)
+        if revMatchAndSource == None:
+            print(f"Source or revision does not exist: {name}")
+            return
+        (revision, source) = revMatchAndSource
+        current = revision["value"]
+    else:
+        (source, revision) = sourceAndRevision
+        current = revision["value"]
     lines = [i for i in helpers.treeGen(current)]
+    printName = f"Source: {source['name']}"
+    if sourceAndRevision == None:
+        printName += f"\t Revision: {name}"
     if len(args) > 1:
         with open(args[1], "w", encoding="utf8") as f:
-            f.write(f"{source['name']}\n")
+            f.write(f"{source['path']}\n")
             for line in lines:
                 f.write(f"{line}\n")
         print(f"Tree for {source['name']} exported to {args[1]}")
     else:
+        print(printName)
         print(source["path"])
         for line in lines:
             print(line)
+
+
+# def diff(args):
+#     revId1 = args[0]
+#     revId2 = args[1]
+#     rev1 = database.findRev(revId1)
+#     if rev1 == None:
+#         print(f"First revision provided does not exist. ID: {revId1}")
+#         return
+#     rev2 = database.findRev(revId2)
+#     if rev2 == None:
+#         print(f"Second revision provided does not exist. ID: {revId2}")
+#         return
+#     if rev1["sourceId"] != rev2["sourceId"]:
+#         print("Revisions are not from the same source.")
+#     lines = helpers.diffGen(rev1["value"], rev2["value"])
+#     for line in lines:
+#         print(line)
 
 
 if __name__ == "__main__":
