@@ -90,7 +90,6 @@ def findRev(id):
 
 
 def createTable(name):
-    print(name)
     query = ""
     if name == "sources":
         query = f"CREATE TABLE {name} (id INTEGER PRIMARY KEY, name TEXT UNIQUE, path TEXT, created INTEGER, current_revision_id TEXT)"
@@ -100,6 +99,8 @@ def createTable(name):
         query = f"CREATE TABLE {name} (id INTEGER PRIMARY KEY, timestamp INTEGER, commands TEXT)"
     elif name == "ignore":
         query = f"CREATE TABLE {name} (id INTEGER PRIMARY KEY, value TEXT UNIQUE)"
+    elif name == "backups":
+        query = f"CREATE TABLE {name} (id INTEGER PRIMARY KEY, sourceId INTEGER, revisionId TEXT, created INTEGER, destination TEXT)"
     else:
         return
     cur.execute(query)

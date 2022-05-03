@@ -1,3 +1,4 @@
+import subprocess
 import os
 import sqlite3
 import sys
@@ -25,7 +26,10 @@ def help():
             ["ua f", "Force update all sources."],
             ["rm <source>", "Delete source."],
             ["ls", "List all sources."],
-            ["tree <source>", "List contents of source as a tree."],
+            [
+                "tree <source or revision id>",
+                "List contents of source or revision as a tree.",
+            ],
             [
                 "tree <source> <filename>",
                 "Export source tree to file.",
@@ -34,6 +38,11 @@ def help():
             ["ig new <item>", "Add new item to ignore list."],
             ["ig rm <item>", "Remove item from ignore list."],
             ["ig ls", "List ignore list."],
+            [
+                "b <source> <destination path>",
+                "Backup source by making source and destionation identical, modifying destination only.",
+            ],
+            ["bh <sourc>", "List backup history of source."],
             ["", ""],
             ["FLAGS", ""],
             ["-v", "Verbose."],
@@ -154,7 +163,8 @@ def rm(args):
 
 def ls():
     sources = database.fetch(
-        "SELECT id, name, created, current_revision_id FROM sources"
+        """SELECT sources.id, name, sources.created, current_revision_id, revisions.value, revisions.created FROM sources
+        LEFT JOIN revisions ON sources.current_revision_id = revisions.id"""
     )
     formatted = [
         [
@@ -162,18 +172,14 @@ def ls():
             name,
             helpers.timestampToString(created),
             database.revCount(id),
-            # helpers.sizeOfFmt(helpers.sizeCalc(source)),
+            helpers.sizeOfFmt(helpers.sizeCalc(json.loads(value))),
+            helpers.timestampToString(updated),
         ]
-        for [id, name, created, current_revision_id] in sources
+        for [id, name, created, current_revision_id, value, updated] in sources
     ]
     formatted.insert(
         0,
-        [
-            "ID",
-            "NAME",
-            "CREATED",
-            "REVISIONS",
-        ],
+        ["ID", "NAME", "CREATED", "REVISIONS", "SIZE", "UPDATED"],
     )
     helpers.printTable(formatted)
 
@@ -262,6 +268,56 @@ def tree(args):
 #         print(line)
 
 
+def b(args):
+    name = args[0]
+    path = args[1]
+    (source, revision) = database.find(name)
+    if source == None:
+        print(f"Source does not exist: {name}")
+        return
+    if not os.path.isdir(path):
+        print(f"Invalid destination path: {path}")
+        return
+    subprocess.run(
+        f"rclone/rclone.exe sync {source['path']} {path} -i {'-v' if verbose else ''}"
+    )
+    database.mutate(
+        "INSERT INTO backups (sourceId, revisionId, created, destination) VALUES (?, ?, ?, ?)",
+        params=(source["id"], revision["id"], datetime.now().timestamp(), path),
+    )
+
+
+def bh(args):
+    name = args[0]
+    (source, _) = database.find(name)
+    if source == None:
+        print(f"Source does not exist: {name}")
+        return
+    backups = database.fetch(
+        """
+    SELECT revisionId, created, destination
+    FROM backups WHERE sourceId = ?
+    ORDER BY created DESC
+    """,
+        params=(source["id"],),
+    )
+    formatted = [
+        [
+            revisionId,
+            destination,
+            helpers.timestampToString(created),
+        ]
+        for [revisionId, created, destination] in backups
+    ]
+    formatted.insert(
+        0,
+        ["REVISION", "DESTINATION", "CREATED"],
+    )
+    print("Backup history")
+    helpers.sourceInfo(source)
+    helpers.printTable(formatted)
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 1:
         help()
@@ -276,5 +332,5 @@ if __name__ == "__main__":
             globals()[args[0]]()
         else:
             globals()[args[0]](args[1:])
-        database.logSession(args[2:])
+        database.logSession(sys.argv[1:])
         database.con.close()

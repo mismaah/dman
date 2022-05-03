@@ -113,7 +113,7 @@ def checksum(source):
 
 
 def sourceInfo(source):
-    print(f"NAME: {source['name']}")
+    print(f"SOURCE: {source['name']}")
 
 
 def traverse(parent, verbose=False, ignoreList=None):
